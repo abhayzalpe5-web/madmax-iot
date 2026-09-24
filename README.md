@@ -77,12 +77,12 @@ const char* password = "000000000";
   ```cpp
   const char* serverUrl = "http://192.168.1.100:3000/api/device/sync";
   ```
-- **Render Production Deployment**:
-  Once deployed to Render, paste your live Render URL:
+- **Render Production Deployment (Live URL)**:
+  Configured to your live Render endpoint:
   ```cpp
-  const char* serverUrl = "https://your-app-name.onrender.com/api/device/sync";
+  const char* serverUrl = "https://madmax-iot-1.onrender.com/api/device/sync";
   ```
-  *(The code automatically uses `WiFiClientSecure` with `setInsecure()` for HTTPS on Render without needing SSL thumbprints!)*
+  *(The code automatically uses `WiFiClientSecure` with `setInsecure()` and 1024-byte SSL buffers for HTTPS on Render without needing SSL thumbprints!)*
 
 ---
 

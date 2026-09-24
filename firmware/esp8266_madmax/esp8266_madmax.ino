@@ -14,6 +14,10 @@
  * - WiFi SSID: SPIDERMAN
  * - WiFi Password: 000000000
  * 
+ * Live Render Production Cloud Server:
+ * - Base URL: https://madmax-iot-1.onrender.com
+ * - Sync Endpoint: https://madmax-iot-1.onrender.com/api/device/sync
+ * 
  * Required Arduino Libraries (Install via Arduino Library Manager):
  * 1. "DHT sensor library" by Adafruit (plus Adafruit Unified Sensor dependency)
  * 2. "LiquidCrystal I2C" by Frank de Brabander or Marco Schwartz
@@ -56,16 +60,10 @@ const char* ssid     = "SPIDERMAN";
 const char* password = "000000000";
 
 /**
- * SERVER CONFIGURATION:
- * 
- * A) Local Testing (On same WiFi network as your PC):
- *    Example: "http://192.168.1.100:3000/api/device/sync"
- *    (Replace 192.168.1.100 with your computer's local IPv4 address)
- * 
- * B) Render Production Cloud Deployment:
- *    Example: "https://your-madmax-app.onrender.com/api/device/sync"
+ * LIVE RENDER SERVER CONFIGURATION:
+ * Synchronizes DHT11 readings and receives Smart LCD + LED commands
  */
-const char* serverUrl = "http://192.168.1.100:3000/api/device/sync";
+const char* serverUrl = "https://madmax-iot-1.onrender.com/api/device/sync";
 
 // Polling interval: Every 10 seconds as specified in requirements
 const unsigned long SYNC_INTERVAL = 10000; 
@@ -142,6 +140,7 @@ void setup() {
   Serial.println("\n============================================");
   Serial.println("🌿 MADMAX IoT System Firmware");
   Serial.println("Designed and Developed by Dalinderz");
+  Serial.println("Render Cloud: https://madmax-iot-1.onrender.com");
   Serial.println("============================================");
 
   // Initialize LED Pin
@@ -201,8 +200,8 @@ void syncWithServer() {
   float temperature = dht.readTemperature(); // Celsius
 
   if (isnan(humidity) || isnan(temperature)) {
-    Serial.println("[DHT11] Warning: Failed to read from DHT11 sensor! Using previous values or default.");
-    temperature = 26.5; // Fallback fallback values
+    Serial.println("[DHT11] Warning: Failed to read from DHT11 sensor! Using fallback values.");
+    temperature = 26.5; 
     humidity = 55.0;
   } else {
     Serial.print("[DHT11] Temp: ");
@@ -220,31 +219,34 @@ void syncWithServer() {
   String requestJson;
   serializeJson(reqDoc, requestJson);
 
-  // 3. Send HTTP / HTTPS Request to Backend Server
+  // 3. Send HTTP / HTTPS Request to Render Cloud Server
   HTTPClient http;
   bool isHttps = String(serverUrl).startsWith("https://");
 
+  WiFiClientSecure secureClient;
+  WiFiClient regularClient;
+
   if (isHttps) {
-    WiFiClientSecure secureClient;
-    secureClient.setInsecure(); // Allows connecting to Render HTTPS without SSL cert bundle
+    secureClient.setInsecure(); // Allows connecting to Render HTTPS without needing bundled certs
+    secureClient.setBufferSizes(1024, 1024); // Optimize SSL/TLS buffer sizes for ESP8266 RAM
     http.begin(secureClient, serverUrl);
   } else {
-    WiFiClient client;
-    http.begin(client, serverUrl);
+    http.begin(regularClient, serverUrl);
   }
 
+  http.setTimeout(15000); // 15-second timeout to accommodate cloud latency / spin-up
   http.addHeader("Content-Type", "application/json");
 
-  Serial.print("[Sync] Sending data to: ");
+  Serial.print("[Sync] Sending data to Render: ");
   Serial.println(serverUrl);
 
   int httpCode = http.POST(requestJson);
 
   if (httpCode > 0) {
     String response = http.getString();
-    Serial.print("[Sync] Server Response (");
-    Serial.print(httpCode);
-    Serial.println("):");
+    Serial.print("[Sync] Render Response Code: ");
+    Serial.println(httpCode);
+    Serial.print("[Sync] Payload: ");
     Serial.println(response);
 
     if (httpCode == HTTP_CODE_OK || httpCode == HTTP_CODE_CREATED) {
@@ -253,19 +255,19 @@ void syncWithServer() {
       DeserializationError err = deserializeJson(resDoc, response);
 
       if (!err) {
-        // A) Process LED Automation Command
+        // A) Process LED Automation Command (D0 / GPIO16)
         const char* ledCmd = resDoc["led"];
         if (ledCmd != nullptr) {
           if (String(ledCmd) == "ON") {
             digitalWrite(LED_PIN, HIGH);
-            Serial.println("[LED] State: HIGH (ON)");
+            Serial.println("[LED D0] State: HIGH (ON)");
           } else {
             digitalWrite(LED_PIN, LOW);
-            Serial.println("[LED] State: LOW (OFF)");
+            Serial.println("[LED D0] State: LOW (OFF)");
           }
         }
 
-        // B) Process Smart LCD Display Text
+        // B) Process Smart LCD Display Text (16x2 I2C)
         JsonObject lcdObj = resDoc["lcd"];
         if (!lcdObj.isNull()) {
           const char* row1 = lcdObj["row1"];
@@ -275,7 +277,7 @@ void syncWithServer() {
           String r2 = (row2 != nullptr) ? String(row2) : "Ready";
           
           updateDisplay(r1, r2);
-          Serial.println("[LCD] Updated display content");
+          Serial.println("[LCD 16x2] Updated content to row 1 & row 2");
         }
       } else {
         Serial.print("[Sync] JSON Parse Error: ");
