@@ -132,7 +132,7 @@ Render is a modern cloud hosting platform. This repository is already pre-config
 4. Connect your GitHub repository.
 5. Render will automatically detect the project settings from `render.yaml` or you can verify:
    - **Environment**: `Node`
-   - **Build Command**: `npm install`
+   - **Build Command**: `npm install && npm rebuild sqlite3 --build-from-source`
    - **Start Command**: `node server.js`
    - **Health Check Path**: `/api/health`
 6. Click **"Deploy Web Service"**.
